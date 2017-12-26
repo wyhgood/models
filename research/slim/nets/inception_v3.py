@@ -417,7 +417,7 @@ def inception_v3_base(inputs,
 
 
 def inception_v3(inputs,
-                 num_classes=1000,
+                 num_classes=2,
                  is_training=True,
                  dropout_keep_prob=0.8,
                  min_depth=16,

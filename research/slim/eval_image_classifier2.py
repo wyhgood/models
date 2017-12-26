@@ -24,11 +24,17 @@ import tensorflow as tf
 from datasets import dataset_factory
 from nets import nets_factory
 from preprocessing import preprocessing_factory
+from tensorflow.python.training import basic_session_run_hooks
+from tensorflow.python.training import evaluation
+from tensorflow.python.training import monitored_session
+from tensorflow.python.training import saver as tf_saver
+from tensorflow.python.training import session_run_hook
+from tensorflow.python.training import training_util
 
 slim = tf.contrib.slim
 
 tf.app.flags.DEFINE_integer(
-    'batch_size', 100, 'The number of samples in each batch.')
+    'batch_size', 50, 'The number of samples in each batch.')
 
 tf.app.flags.DEFINE_integer(
     'max_num_batches', None,
@@ -112,27 +118,28 @@ def main(_):
         shuffle=False,
         common_queue_capacity=2 * FLAGS.batch_size,
         common_queue_min=FLAGS.batch_size)
-    [image, label] = provider.get(['image', 'label'])
+    [image_input, label] = provider.get(['image', 'label'])
     label -= FLAGS.labels_offset
 
     #####################################
     # Select the preprocessing function #
     #####################################
     preprocessing_name = FLAGS.preprocessing_name or FLAGS.model_name
+    print(preprocessing_name)
     image_preprocessing_fn = preprocessing_factory.get_preprocessing(
         preprocessing_name,
         is_training=False)
 
     eval_image_size = FLAGS.eval_image_size or network_fn.default_image_size
-
-    image = image_preprocessing_fn(image, eval_image_size, eval_image_size)
+    #print(image.shape)
+    image = image_preprocessing_fn(image_input, eval_image_size, eval_image_size)
 
     images, labels = tf.train.batch(
         [image, label],
         batch_size=FLAGS.batch_size,
         num_threads=FLAGS.num_preprocessing_threads,
         capacity=5 * FLAGS.batch_size)
-
+    print(images.shape)
     ####################
     # Define the model #
     ####################
@@ -148,44 +155,19 @@ def main(_):
       variables_to_restore = slim.get_variables_to_restore()
 
     predictions = tf.argmax(logits, 1)
-    labels = tf.squeeze(labels)
-
-    # Define the metrics:
-    names_to_values, names_to_updates = slim.metrics.aggregate_metric_map({
-        'Accuracy': slim.metrics.streaming_accuracy(predictions, labels),
-        'Recall_5': slim.metrics.streaming_recall_at_k(
-            logits, labels, 5),
-    })
-
-    # Print the summaries to screen.
-    for name, value in names_to_values.items():
-      summary_name = 'eval/%s' % name
-      op = tf.summary.scalar(summary_name, value, collections=[])
-      op = tf.Print(op, [value], summary_name)
-      tf.add_to_collection(tf.GraphKeys.SUMMARIES, op)
-
-    # TODO(sguada) use num_epochs=1
-    if FLAGS.max_num_batches:
-      num_batches = FLAGS.max_num_batches
-    else:
-      # This ensures that we make a single pass over all of the data.
-      num_batches = math.ceil(dataset.num_samples / float(FLAGS.batch_size))
-
-    if tf.gfile.IsDirectory(FLAGS.checkpoint_path):
-      checkpoint_path = tf.train.latest_checkpoint(FLAGS.checkpoint_path)
-    else:
-      checkpoint_path = FLAGS.checkpoint_path
-
-    tf.logging.info('Evaluating %s' % checkpoint_path)
-
-    slim.evaluation.evaluate_once(
-        master=FLAGS.master,
-        checkpoint_path=checkpoint_path,
-        logdir=FLAGS.eval_dir,
-        num_evals=num_batches,
-        eval_op=list(names_to_updates.values()),
-        variables_to_restore=variables_to_restore)
-
+    #checkpoint_path = "check_point/model.ckpt-31009" 
+    checkpoint_path = "check_point/model.ckpt-122647"    
+    #checkpoint_path = "check_point/model.ckpt-201579"
+    #checkpoint_path = "check_point/model.ckpt-330819"
+    
+    session_creator = monitored_session.ChiefSessionCreator(
+        checkpoint_filename_with_path=checkpoint_path)
+    with monitored_session.MonitoredSession(
+        session_creator=session_creator) as session:
+ 
+          list = session.run(predictions)
+          print(list)
+          print('----------------------')
 
 if __name__ == '__main__':
   tf.app.run()
